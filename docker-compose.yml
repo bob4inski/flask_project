@@ -1,0 +1,55 @@
+version: "3.5"
+services:
+  postgres:
+    container_name: ${APP_NAME}-postgres
+    image: postgres:14.3-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    user: postgres
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "pg_isready"]
+      interval: 1s
+      timeout: 1s
+      retries: 30
+    restart: unless-stopped
+  redis:
+    container_name: ${APP_NAME}-redis
+    image: redis:7.0.0-alpine
+    command: >
+      --requirepass ${REDIS_PASSWORD}
+    ports:
+      - "${REDIS_PORT}:6379"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 1s
+      retries: 30
+    restart: unless-stopped
+  flask:
+    container_name: ${APP_NAME}-flask
+    build: .
+    command: >
+      sh -c "yoyo apply --database postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@host.docker.internal:${POSTGRES_PORT}/${POSTGRES_DB} ./migrations &&
+             python3 -m flask run --host=0.0.0.0"
+    ports:
+      - "${APP_PORT}:${APP_PORT}"
+    env_file: .env
+    environment:
+      FLASK_RUN_PORT: ${APP_PORT}
+      POSTGRES_HOST: host.docker.internal
+      REDIS_HOST: host.docker.internal
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
